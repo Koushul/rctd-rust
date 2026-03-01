@@ -4,7 +4,7 @@
 [![PyPI](https://img.shields.io/pypi/v/rctd-py)](https://pypi.org/project/rctd-py/)
 [![Python](https://img.shields.io/pypi/pyversions/rctd-py)](https://pypi.org/project/rctd-py/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![codecov](https://codecov.io/gh/p-gueguen/rctd-py/graph/badge.svg)](https://codecov.io/gh/p-gueguen/rctd-py)
+[![codecov](https://codecov.io/gh/p-gueguen/rctd-py/branch/main/graph/badge.svg)](https://codecov.io/gh/p-gueguen/rctd-py)
 
 JAX-accelerated Robust Cell Type Decomposition for spatial transcriptomics.
 
