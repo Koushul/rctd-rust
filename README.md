@@ -125,8 +125,8 @@ Use the `batch_size` parameter in `run_rctd` to control GPU memory usage:
 
 | Dataset | # cells | R spacexr (8 CPU) | rctd-py (L40S GPU) | **Speedup** |
 |---------|--------|-------------------|---------------------|-------------|
-| Region 3 | 58,191 | 51.1 min | 11.8 min | **4.3×** |
-| Region 1 | 13,940 | 14.1 min | 3.5 min | **4.0×** |
+| Xenium (large) | 58,191 | 51.1 min | 11.8 min | **4.3×** |
+| Xenium (small) | 13,940 | 14.1 min | 3.5 min | **4.0×** |
 
 > **Note:** The IRWLS solver loop is memory-bandwidth bound for large cell type panels (K=45). Speedup scales with the number of cell types — smaller panels (K < 20) see larger speedups.
 
@@ -136,8 +136,8 @@ Validated against R spacexr on two Xenium datasets (45 cell types, 380 genes, do
 
 | Dataset | # cells | Dominant type agreement | With `sigma_override` |
 |---------|--------|------------------------|-----------------------|
-| Region 1 | 13,940 | **99.73%** | **100%** |
-| Region 3 | 58,191 | **99.71%** | — |
+| Xenium (small) | 13,940 | **99.73%** | **100%** |
+| Xenium (large) | 58,191 | **99.71%** | — |
 
 The tiny default gap (0.27%) traces entirely to platform-effect estimation (`fit_bulk`), not the per-pixel solver — which is bit-identical to R. All disagreeing pixels are genuinely ambiguous (margin < 0.05 between top two types).
 
