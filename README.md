@@ -41,7 +41,7 @@ spatial = anndata.read_h5ad("spatial.h5ad")
 result = run_rctd(spatial, reference, mode="doublet")
 ```
 
-📓 **[Tutorial notebook](examples/tutorial.ipynb)** · 🌐 **[Rendered tutorial](https://p-gueguen.github.io/rctd-py/)**
+📓 **[Tutorial notebook](examples/tutorial.py)** (marimo) · 🌐 **[Rendered tutorial](https://p-gueguen.github.io/rctd-py/)**
 
 ## Installation
 
@@ -50,15 +50,61 @@ pip install rctd-py   # CPU (works everywhere; GPU auto-detected if CUDA availab
 ```
 
 <details>
-<summary>Verify GPU detection</summary>
+<summary>GPU setup and CUDA compatibility</summary>
+
+### Recommended setup
+
+Install PyTorch with CUDA **before** installing rctd-py — `pip install rctd-py` alone pulls CPU-only PyTorch on most systems:
+
+```bash
+# CUDA 12.4 (recommended for drivers >= 550.54)
+pip install torch --index-url https://download.pytorch.org/whl/cu124
+pip install rctd-py
+
+# CUDA 12.1 (for older drivers >= 530.30)
+pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+# CUDA 11.8 (legacy, drivers >= 520.61)
+pip install torch --index-url https://download.pytorch.org/whl/cu118
+```
+
+### Verify GPU detection
 
 ```python
 import torch
-print(torch.cuda.is_available())    # True
+print(torch.cuda.is_available())    # True  (False means CPU-only torch or driver issue)
 print(torch.cuda.get_device_name()) # e.g. 'NVIDIA L40S'
+print(torch.version.cuda)           # e.g. '12.4'
 ```
 
-Use the `batch_size` parameter in `run_rctd` to control GPU memory. The default (10,000 pixels/batch) works well for 24+ GB VRAM.
+### CUDA compatibility table
+
+**No separate CUDA toolkit installation needed.** PyTorch ships its own CUDA runtime — you only need a compatible NVIDIA driver.
+
+| PyTorch version | Bundled CUDA | Minimum NVIDIA driver |
+|-----------------|-------------|----------------------|
+| 2.5+ | CUDA 12.4 | >= 550.54 |
+| 2.3–2.4 | CUDA 12.1 | >= 530.30 |
+| 2.0–2.2 | CUDA 11.8 | >= 520.61 |
+
+> **Tip:** Check your driver version with `nvidia-smi` (top right of the output). This is the *driver* version, not the CUDA toolkit version — `nvcc --version` shows the toolkit version, which is irrelevant here since PyTorch bundles its own runtime.
+
+### Tested GPUs
+
+| GPU | VRAM | Speedup (58k pixels, K=45) |
+|-----|------|---------------------------|
+| NVIDIA L40S | 48 GB | 4.2x |
+| NVIDIA RTX 6000 Blackwell | 96 GB | 4.3x |
+
+### Memory management
+
+Use the `batch_size` parameter in `run_rctd` to control GPU memory usage:
+
+| VRAM | Recommended `batch_size` |
+|------|-------------------------|
+| 24+ GB | 10,000 (default) |
+| 8–16 GB | 5,000 |
+| < 8 GB | 2,000 |
 
 </details>
 
@@ -73,6 +119,10 @@ Use the `batch_size` parameter in `run_rctd` to control GPU memory. The default 
 ## Benchmarks
 
 ### End-to-end performance (Xenium, 58k pixels, 45 cell types, doublet mode)
+
+<p align="center">
+  <img src="docs/benchmark.png" alt="Benchmark barplot" width="700">
+</p>
 
 | Backend | Sigma | Deconvolution | **Total** | **Speedup** |
 |---------|-------|---------------|-----------|-------------|

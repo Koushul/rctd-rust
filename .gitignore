@@ -15,6 +15,8 @@ test_*.py
 *debug*.py
 *.qmd
 *.html
+!docs/tutorial.html
+!docs/index.html
 
 # Lockfiles
 uv.lock
@@ -79,3 +81,4 @@ secrets/
 # Generated version file
 src/rctd/_version.py
 docs/plans/
+!docs/plans/100-percent-matching-roadmap.md
