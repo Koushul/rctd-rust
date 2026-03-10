@@ -5,7 +5,6 @@ import pytest
 import torch
 
 from rctd._irwls import (
-    _solve_box_qp,
     solve_irwls,
     solve_irwls_batch,
 )
@@ -155,6 +154,4 @@ class TestSolveIRWLSBatch:
             SQ_mat,
             x_vals,
         )
-        np.testing.assert_allclose(
-            batch_weights.sum(dim=1).numpy(), np.ones(N), atol=1e-4
-        )
+        np.testing.assert_allclose(batch_weights.sum(dim=1).numpy(), np.ones(N), atol=1e-4)
