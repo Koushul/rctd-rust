@@ -33,7 +33,6 @@ from rctd._rctd import run_rctd
 from rctd._reference import Reference
 from rctd._types import RCTDConfig
 
-
 _PERF_CSV_PATH = Path(
     os.environ.get(
         "RCTD_PERF_CSV",
