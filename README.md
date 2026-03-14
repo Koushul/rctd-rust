@@ -22,7 +22,7 @@ Deconvolve spatial transcriptomics spots (Visium, Xenium, MERFISH, Slide-seq, �
 
 | | |
 |---|---|
-| 🚀 **4× end-to-end speedup** | Xenium 58k cells: **12 min** (L40S GPU) vs 51 min (R, 8 CPU) |
+| 🚀 **4× end-to-end speedup** | Xenium 58k cells: **12.3 min** (GPU) vs 51 min (R, 8 CPU) |
 | 🎯 **99.7% concordance** with R spacexr | **100%** with `sigma_override` — per-pixel solver is bit-identical |
 | 🔧 **Drop-in replacement** | Same algorithm, same parameters, same results — just faster |
 | 📦 **`pip install rctd-py`** | Pure Python, works on CPU out of the box |
@@ -93,7 +93,7 @@ print(torch.version.cuda)           # e.g. '12.4'
 
 | GPU | VRAM | Speedup (58k cells, K=45) |
 |-----|------|---------------------------|
-| NVIDIA L40S | 48 GB | 4.3× |
+| NVIDIA L40S | 48 GB | 4.2× |
 
 ### Memory management
 
@@ -125,8 +125,8 @@ Use the `batch_size` parameter in `run_rctd` to control GPU memory usage:
 
 | Dataset | # cells | R spacexr (8 CPU) | rctd-py (L40S GPU) | **Speedup** |
 |---------|--------|-------------------|---------------------|-------------|
-| Xenium (large) | 58,191 | 51.1 min | 11.8 min | **4.3×** |
-| Xenium (small) | 13,940 | 14.1 min | 3.5 min | **4.0×** |
+| Xenium (large) | 58,191 | 51.1 min | 12.3 min | **4.2×** |
+| Xenium (small) | 13,940 | 14.1 min | 3.4 min | **4.2×** |
 
 > **Note:** The IRWLS solver loop is memory-bandwidth bound for large cell type panels (K=45). Speedup scales with the number of cell types — smaller panels (K < 20) see larger speedups.
 
