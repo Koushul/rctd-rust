@@ -70,9 +70,9 @@ def _run_batched_scoring(
         expected_tr = torch.clamp(expected_tr, min=1e-4)
 
         scores_batch = calc_log_likelihood_batch(B_tr, expected_tr, Q_gpu, SQ_gpu, X_gpu, K_val)
-        all_scores.append(scores_batch.cpu().numpy())
+        all_scores.append(scores_batch)
 
-    return np.concatenate(all_scores)
+    return torch.cat(all_scores).cpu().numpy()
 
 
 def _run_batched_weights(
@@ -125,9 +125,9 @@ def _run_batched_weights(
             constrain=False,
             bulk_mode=False,
         )
-        all_weights.append(weights_batch.cpu().numpy())
+        all_weights.append(weights_batch)
 
-    return list(np.concatenate(all_weights))
+    return list(torch.cat(all_weights).cpu().numpy())
 
 
 def run_multi_mode(

@@ -106,10 +106,12 @@ def run_doublet_mode(
         triples_arr = np.array(triples, dtype=np.int32)
         M_total = len(triples_arr)
 
+        all_weights_t = []
+        all_scores_t = []
+
         for start in range(0, M_total, batch_size):
             end = min(start + batch_size, M_total)
             tr = triples_arr[start:end]
-            bs = tr.shape[0]
 
             pix_idx = tr[:, 0]
             t1_idx = tr[:, 1]
@@ -150,13 +152,16 @@ def run_doublet_mode(
                 B_tr, expected_tr, Q_gpu, SQ_gpu, X_gpu, config.K_val
             )
 
-            w_np = weights_batch.cpu().numpy()
-            sc_np = scores_batch.cpu().numpy()
+            all_weights_t.append(weights_batch)
+            all_scores_t.append(scores_batch)
 
-            for i in range(bs):
-                n_idx, t1, t2 = triples[start + i]
-                pair_log_l[(n_idx, t1, t2)] = sc_np[i]
-                pair_weights[(n_idx, t1, t2)] = w_np[i]
+        # Transfer all results to CPU at once
+        all_w_np = torch.cat(all_weights_t).cpu().numpy()
+        all_sc_np = torch.cat(all_scores_t).cpu().numpy()
+
+        for i, (n_idx, t1, t2) in enumerate(triples):
+            pair_log_l[(n_idx, t1, t2)] = all_sc_np[i]
+            pair_weights[(n_idx, t1, t2)] = all_w_np[i]
 
     print(f"  [doublet] Step 3 done ({_time.time() - _t3:.1f}s)")
 
@@ -170,10 +175,11 @@ def run_doublet_mode(
         singles_arr = np.array(singles, dtype=np.int32)
         S_total = len(singles_arr)
 
+        all_sing_scores_t = []
+
         for start in range(0, S_total, batch_size):
             end = min(start + batch_size, S_total)
             sg = singles_arr[start:end]
-            bs = sg.shape[0]
 
             pix_idx = sg[:, 0]
             t_idx = sg[:, 1]
@@ -205,11 +211,13 @@ def run_doublet_mode(
             scores_batch = calc_log_likelihood_batch(
                 B_sg, expected_sg, Q_gpu, SQ_gpu, X_gpu, config.K_val
             )
-            sc_np = scores_batch.cpu().numpy()
+            all_sing_scores_t.append(scores_batch)
 
-            for i in range(bs):
-                n_idx, t = singles[start + i]
-                singlet_log_l[(n_idx, t)] = sc_np[i]
+        # Transfer all results to CPU at once
+        all_sing_sc_np = torch.cat(all_sing_scores_t).cpu().numpy()
+
+        for i, (n_idx, t) in enumerate(singles):
+            singlet_log_l[(n_idx, t)] = all_sing_sc_np[i]
 
     print(f"  [doublet] Step 4 done ({_time.time() - _t4:.1f}s)")
 
@@ -352,6 +360,8 @@ def run_doublet_mode(
     final_t1 = first_type  # (N,) int
     final_t2 = second_type  # (N,) int
 
+    all_final_weights_t = []
+
     for start in range(0, N, batch_size):
         end = min(start + batch_size, N)
 
@@ -379,13 +389,14 @@ def run_doublet_mode(
             bulk_mode=False,
         )
 
-        w_np = w_final.cpu().numpy()
-        # R: results$weights = results$weights / sum(results$weights)
-        w_sums = w_np.sum(axis=1, keepdims=True)
-        w_sums = np.maximum(w_sums, 1e-10)
-        w_np = w_np / w_sums
+        all_final_weights_t.append(w_final)
 
-        weights_doublet[start:end] = w_np
+    # Transfer all results to CPU at once
+    w_all_np = torch.cat(all_final_weights_t).cpu().numpy()
+    # R: results$weights = results$weights / sum(results$weights)
+    w_sums = w_all_np.sum(axis=1, keepdims=True)
+    w_sums = np.maximum(w_sums, 1e-10)
+    weights_doublet = w_all_np / w_sums
 
     print(f"  [doublet] Step 6 done ({_time.time() - _t6:.1f}s)")
     print(f"  [doublet] Total doublet mode: {_time.time() - _t0:.1f}s")
