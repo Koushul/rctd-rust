@@ -279,6 +279,39 @@ def _solve_box_qp_batch_compiled(
     return x
 
 
+@torch.jit.script
+def _solve_box_qp_batch_adaptive_jit(
+    D: torch.Tensor,
+    d: torch.Tensor,
+    lower_bound: torch.Tensor,
+    n_sweeps: int = 50,
+    check_interval: int = 5,
+    tol: float = 1e-4,
+) -> torch.Tensor:
+    """JIT-compiled Gauss-Seidel with batch-level early exit.
+
+    Checks convergence every check_interval sweeps: if the maximum absolute
+    change across all pixels and coordinates is below tol, exits early.
+    """
+    K = d.shape[1]
+    D_diag = torch.diagonal(D, dim1=-2, dim2=-1)
+    x = torch.maximum(d / D_diag, lower_bound)
+
+    for sweep in range(n_sweeps):
+        x_prev = x.clone()
+        for i in range(K):
+            Dx_i = (D[:, i, :] * x).sum(-1)
+            residual = d[:, i] - Dx_i + D[:, i, i] * x[:, i]
+            x[:, i] = torch.maximum(residual / D[:, i, i], lower_bound[:, i])
+
+        if (sweep + 1) % check_interval == 0:
+            max_change = (x - x_prev).abs().max()
+            if max_change < tol:
+                break
+
+    return x
+
+
 def _solve_box_qp_batch(
     D: torch.Tensor,
     d: torch.Tensor,
@@ -388,5 +421,143 @@ def solve_irwls_batch(
         # Freeze converged pixels: only update active ones
         w = torch.where(active.unsqueeze(1), w_new, w)
         converged = converged | newly_converged
+
+    return w, converged
+
+
+@torch.no_grad()
+def solve_irwls_batch_shared(
+    P: torch.Tensor,
+    Y_batch: torch.Tensor,
+    nUMI_batch: torch.Tensor,
+    Q_mat: torch.Tensor,
+    SQ_mat: torch.Tensor,
+    x_vals: torch.Tensor,
+    max_iter: int = 50,
+    min_change: float = 0.001,
+    step_size: float = 0.3,
+    constrain: bool = True,
+    bulk_mode: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Optimized IRWLS for shared reference profiles.
+
+    When all pixels share the same profile matrix P, this replaces bmm with
+    matmul for prediction, gradient, and Hessian. Active pixel compaction
+    skips converged pixels entirely each iteration.
+
+    Args:
+        P: (G, K) shared reference profiles (NOT pre-scaled by nUMI)
+        Y_batch: (N, G) observed counts
+        nUMI_batch: (N,) total UMI per pixel
+        Q_mat, SQ_mat, x_vals: shared likelihood tables
+        max_iter: maximum IRWLS iterations
+        min_change: convergence tolerance (L1 norm of weight change)
+        step_size: damping factor
+        constrain: project weights onto simplex
+        bulk_mode: use Gaussian likelihood
+
+    Returns:
+        (weights, converged): (N, K) and (N,) bool arrays
+    """
+    N = Y_batch.shape[0]
+    if N == 0:
+        K = P.shape[1]
+        return (
+            torch.empty(0, K, dtype=P.dtype, device=P.device),
+            torch.empty(0, dtype=torch.bool, device=P.device),
+        )
+
+    G, K = P.shape
+    dtype = P.dtype
+    device = P.device
+
+    if not bulk_mode:
+        k_val = Q_mat.shape[0] - 3
+        Y_batch = torch.clamp(Y_batch, max=k_val)
+
+    w = torch.ones(N, K, dtype=dtype, device=device) / K
+    eye_K = torch.eye(K, dtype=dtype, device=device)
+    converged = torch.zeros(N, dtype=torch.bool, device=device)
+
+    # Precompute P outer product for Hessian: (G, K*K)
+    # H[n] = sum_g w_g[n,g] * P[g,:,None] * P[g,None,:] = w_g @ P_outer → (K,K)
+    P_outer = (P[:, :, None] * P[:, None, :]).reshape(G, K * K)
+
+    threshold = torch.clamp(nUMI_batch * 1e-7, min=1e-4)
+
+    # Active pixel state — start with all pixels
+    active_idx = torch.arange(N, device=device)
+    Y_act = Y_batch
+    nUMI_act = nUMI_batch
+    thresh_act = threshold
+    w_act = w.clone()
+
+    for it in range(max_iter):
+        n_act = active_idx.shape[0]
+        if n_act == 0:
+            break
+
+        solution = torch.clamp(w_act, min=0.0)
+
+        # Prediction: matmul replaces bmm
+        # S @ w = (nUMI * P) @ w = nUMI * (w @ P.T)
+        prediction = torch.abs(nUMI_act.unsqueeze(1) * (solution @ P.T))
+        prediction = torch.clamp(prediction, min=thresh_act.unsqueeze(1))
+
+        # Derivatives
+        if bulk_mode:
+            d1_vec = -2.0 * (torch.log(prediction) - torch.log(Y_act + 1e-10)) / prediction
+            d2_vec = (
+                -2.0
+                * (1.0 - torch.log(prediction) + torch.log(Y_act + 1e-10))
+                / prediction**2
+            )
+        else:
+            _, d1_flat, d2_flat = calc_q_all(
+                Y_act.reshape(-1), prediction.reshape(-1), Q_mat, SQ_mat, x_vals
+            )
+            d1_vec = d1_flat.reshape(n_act, G)
+            d2_vec = d2_flat.reshape(n_act, G)
+
+        # Gradient: matmul replaces bmm
+        # grad = -(d1 @ S) = -(d1 * nUMI) @ P
+        grad = -((d1_vec * nUMI_act.unsqueeze(1)) @ P)
+
+        # Hessian via P outer product: matmul replaces bmm
+        # H[n,i,j] = nUMI[n]^2 * sum_g (-d2[n,g]) * P[g,i] * P[g,j]
+        d2_w = (-d2_vec) * (nUMI_act**2).unsqueeze(1)  # (n_act, G)
+        hess = (d2_w @ P_outer).reshape(n_act, K, K)
+
+        hess, norm_factor = _psd_batch(hess)
+        norm_factor = torch.clamp(norm_factor, min=1e-10)
+
+        D = hess / norm_factor[:, None, None] + 1e-7 * eye_K.unsqueeze(0)
+        d = -grad / norm_factor[:, None]
+
+        delta_w = _solve_box_qp_batch(D, d, -solution)
+        w_new = solution + step_size * delta_w
+
+        if constrain:
+            w_new = project_simplex_batch(w_new)
+
+        change = torch.sum(torch.abs(w_new - w_act), dim=1)
+        newly_converged = change <= min_change
+        w_act = w_new
+
+        # Scatter results back to full arrays
+        w[active_idx] = w_act
+        converged[active_idx] = converged[active_idx] | newly_converged
+
+        # Compact to still-active pixels
+        still_active = ~newly_converged
+        n_still = still_active.sum().item()
+        if n_still == 0:
+            break
+        if n_still < n_act:
+            active_idx = active_idx[still_active]
+            w_act = w_act[still_active]
+            Y_act = Y_act[still_active]
+            nUMI_act = nUMI_act[still_active]
+            thresh_act = thresh_act[still_active]
 
     return w, converged

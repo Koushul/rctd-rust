@@ -3,7 +3,7 @@ from typing import Dict
 import numpy as np
 import torch
 
-from rctd._irwls import solve_irwls_batch
+from rctd._irwls import solve_irwls_batch_shared
 from rctd._likelihood import calc_log_likelihood
 
 # The sequence of sigmas evaluated in spacexr choose_sigma
@@ -87,10 +87,8 @@ def choose_sigma(
         Q_cur = q_gpu[str(sigma)]
         SQ_cur = sq_gpu[str(sigma)]
 
-        S_batch = fit_numi[:, None, None] * P_gpu[None, :, :]  # (n, G, K)
-
-        weights, _ = solve_irwls_batch(
-            S_batch=S_batch,
+        weights, _ = solve_irwls_batch_shared(
+            P=P_gpu,
             Y_batch=fit_counts,
             nUMI_batch=fit_numi,
             Q_mat=Q_cur,

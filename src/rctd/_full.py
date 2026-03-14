@@ -3,7 +3,7 @@ from typing import List
 import numpy as np
 import torch
 
-from rctd._irwls import solve_irwls_batch
+from rctd._irwls import solve_irwls_batch_shared
 from rctd._types import FullResult, resolve_device
 
 
@@ -50,15 +50,12 @@ def run_full_mode(
         batch_counts = torch.tensor(spatial_counts[start:end], device=device)
         batch_numi = torch.tensor(spatial_numi[start:end], device=device)
 
-        # S_batch: (bs, G, K)
-        S_batch = batch_numi[:, None, None] * P_gpu[None, :, :]
-
         # R's full-mode decomposition uses constrain=FALSE:
         # - Full mode (fitPixels "full"): constrain=FALSE
         # - Doublet mode initial full fit: constrain=FALSE
         # Weights are NOT constrained to simplex; they can be negative.
-        weights, converged = solve_irwls_batch(
-            S_batch=S_batch,
+        weights, converged = solve_irwls_batch_shared(
+            P=P_gpu,
             Y_batch=batch_counts,
             nUMI_batch=batch_numi,
             Q_mat=Q_gpu,

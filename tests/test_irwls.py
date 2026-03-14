@@ -7,6 +7,7 @@ import torch
 from rctd._irwls import (
     solve_irwls,
     solve_irwls_batch,
+    solve_irwls_batch_shared,
 )
 from rctd._likelihood import build_x_vals, compute_q_matrix, compute_spline_coefficients
 
@@ -155,3 +156,118 @@ class TestSolveIRWLSBatch:
             x_vals,
         )
         np.testing.assert_allclose(batch_weights.sum(dim=1).numpy(), np.ones(N), atol=1e-4)
+
+
+class TestSolveIRWLSBatchShared:
+    def test_shared_matches_batch(self, likelihood_tables):
+        """Shared-profile results should match original batch results."""
+        Q_mat, SQ_mat, x_vals = likelihood_tables
+        rng = np.random.default_rng(42)
+        G, K, N = 60, 3, 10
+        profiles = rng.exponential(0.01, size=(G, K))
+        profiles = profiles / profiles.sum(axis=0, keepdims=True)
+
+        nUMIs = rng.integers(500, 3000, size=N).astype(np.float32)
+        Y_batch = np.zeros((N, G), dtype=np.float32)
+        for i in range(N):
+            true_w = rng.dirichlet(np.ones(K))
+            lam = (profiles @ true_w) * nUMIs[i]
+            Y_batch[i] = rng.poisson(lam)
+
+        P = torch.tensor(profiles)
+        Y_t = torch.tensor(Y_batch)
+        nUMI_t = torch.tensor(nUMIs)
+
+        # Original batch path
+        S_batch = P[None, :, :] * nUMI_t[:, None, None]
+        batch_w, batch_c = solve_irwls_batch(
+            S_batch, Y_t, nUMI_t, Q_mat, SQ_mat, x_vals,
+            constrain=False,
+        )
+
+        # Shared-profile path
+        shared_w, shared_c = solve_irwls_batch_shared(
+            P, Y_t, nUMI_t, Q_mat, SQ_mat, x_vals,
+            constrain=False,
+        )
+
+        np.testing.assert_allclose(
+            shared_w.numpy(), batch_w.numpy(), atol=1e-5,
+            err_msg="Shared-profile weights diverge from batch weights",
+        )
+
+    def test_shared_constrained(self, likelihood_tables):
+        """Constrained shared-profile weights should sum to 1."""
+        Q_mat, SQ_mat, x_vals = likelihood_tables
+        rng = np.random.default_rng(99)
+        G, K, N = 50, 4, 8
+        profiles = rng.exponential(0.01, size=(G, K))
+        profiles = profiles / profiles.sum(axis=0, keepdims=True)
+
+        nUMIs = rng.integers(500, 3000, size=N).astype(np.float32)
+        Y_batch = np.zeros((N, G), dtype=np.float32)
+        for i in range(N):
+            true_w = rng.dirichlet(np.ones(K))
+            lam = (profiles @ true_w) * nUMIs[i]
+            Y_batch[i] = rng.poisson(lam)
+
+        shared_w, _ = solve_irwls_batch_shared(
+            torch.tensor(profiles),
+            torch.tensor(Y_batch),
+            torch.tensor(nUMIs),
+            Q_mat, SQ_mat, x_vals,
+            constrain=True,
+        )
+        np.testing.assert_allclose(
+            shared_w.sum(dim=1).numpy(), np.ones(N), atol=1e-4,
+        )
+
+    def test_shared_many_types(self, likelihood_tables):
+        """Shared-profile should work with many cell types (K=20)."""
+        Q_mat, SQ_mat, x_vals = likelihood_tables
+        rng = np.random.default_rng(123)
+        G, K, N = 80, 20, 15
+        profiles = rng.exponential(0.01, size=(G, K))
+        profiles = profiles / profiles.sum(axis=0, keepdims=True)
+
+        nUMIs = rng.integers(500, 3000, size=N).astype(np.float32)
+        Y_batch = np.zeros((N, G), dtype=np.float32)
+        for i in range(N):
+            true_w = rng.dirichlet(np.ones(K))
+            lam = (profiles @ true_w) * nUMIs[i]
+            Y_batch[i] = rng.poisson(lam)
+
+        P = torch.tensor(profiles)
+        Y_t = torch.tensor(Y_batch)
+        nUMI_t = torch.tensor(nUMIs)
+
+        S_batch = P[None, :, :] * nUMI_t[:, None, None]
+        batch_w, _ = solve_irwls_batch(
+            S_batch, Y_t, nUMI_t, Q_mat, SQ_mat, x_vals,
+            constrain=False,
+        )
+
+        shared_w, _ = solve_irwls_batch_shared(
+            P, Y_t, nUMI_t, Q_mat, SQ_mat, x_vals,
+            constrain=False,
+        )
+
+        np.testing.assert_allclose(
+            shared_w.numpy(), batch_w.numpy(), atol=1e-4,
+            err_msg="Shared-profile diverges from batch for K=20",
+        )
+
+    def test_shared_empty_batch(self, likelihood_tables):
+        """Empty batch should return empty tensors."""
+        Q_mat, SQ_mat, x_vals = likelihood_tables
+        G, K = 50, 3
+        P = torch.randn(G, K)
+
+        w, c = solve_irwls_batch_shared(
+            P,
+            torch.empty(0, G),
+            torch.empty(0),
+            Q_mat, SQ_mat, x_vals,
+        )
+        assert w.shape == (0, K)
+        assert c.shape == (0,)
