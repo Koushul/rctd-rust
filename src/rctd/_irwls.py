@@ -557,10 +557,9 @@ def solve_irwls_batch_shared(
 
         # Compact to still-active pixels
         still_active = ~newly_converged
-        n_still = still_active.sum().item()
-        if n_still == 0:
+        if newly_converged.all():
             break
-        if n_still < n_act:
+        if newly_converged.any():
             active_idx = active_idx[still_active]
             w_act = w_act[still_active]
             Y_act = Y_act[still_active]
