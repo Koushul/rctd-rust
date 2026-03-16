@@ -41,14 +41,15 @@ def run_full_mode(
     SQ_gpu = torch.tensor(sq_mat, device=device)
     X_gpu = torch.tensor(x_vals, device=device)
 
+    # Pre-transfer all spatial data to GPU at once (avoids per-batch numpy→CUDA copy)
+    Y_gpu = torch.tensor(spatial_counts, device=device)
+    nUMI_gpu = torch.tensor(spatial_numi, device=device)
+
     all_weights = []
     all_converged = []
 
     for start in range(0, N, batch_size):
         end = min(start + batch_size, N)
-
-        batch_counts = torch.tensor(spatial_counts[start:end], device=device)
-        batch_numi = torch.tensor(spatial_numi[start:end], device=device)
 
         # R's full-mode decomposition uses constrain=FALSE:
         # - Full mode (fitPixels "full"): constrain=FALSE
@@ -56,8 +57,8 @@ def run_full_mode(
         # Weights are NOT constrained to simplex; they can be negative.
         weights, converged = solve_irwls_batch_shared(
             P=P_gpu,
-            Y_batch=batch_counts,
-            nUMI_batch=batch_numi,
+            Y_batch=Y_gpu[start:end],
+            nUMI_batch=nUMI_gpu[start:end],
             Q_mat=Q_gpu,
             SQ_mat=SQ_gpu,
             x_vals=X_gpu,
