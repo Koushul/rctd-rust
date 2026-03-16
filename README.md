@@ -1,7 +1,7 @@
 <p align="center">
   <h1 align="center">rctd-py</h1>
   <p align="center">
-    <strong>GPU-accelerated spatial transcriptomics deconvolution — up to 8x faster than R</strong>
+    <strong>GPU-accelerated spatial transcriptomics deconvolution — 10–20x GPU speedup, 6–15x faster than R</strong>
   </p>
   <p align="center">
     <a href="https://github.com/p-gueguen/rctd-py/actions/workflows/ci.yml"><img src="https://github.com/p-gueguen/rctd-py/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -22,7 +22,8 @@ Deconvolve spatial transcriptomics spots (Visium, Xenium, MERFISH, Slide-seq, �
 
 | | |
 |---|---|
-| 🚀 **6–15x end-to-end speedup** | Xenium 58k cells: **6.6 min** (GPU) vs 51 min (R, 8 CPU) |
+| 🚀 **10–20x GPU acceleration** | Xenium 36k cells: **5.4 min** (GPU) vs 108 min (CPU) |
+| ⚡ **6–15x faster than R** | Same dataset: 5.4 min (GPU) vs 82 min (R spacexr, 8 CPU) |
 | 🎯 **99.7% concordance** with R spacexr | **100%** with `sigma_override` — per-pixel solver is bit-identical |
 | 🔧 **Drop-in replacement** | Same algorithm, same parameters, same results — just faster |
 | 📦 **`pip install rctd-py`** | Pure Python, works on CPU out of the box |
@@ -120,13 +121,22 @@ Peak CPU RAM (RSS) is typically 2–3x peak VRAM, dominated by intermediate arra
 
 ## Benchmarks
 
-Benchmarked on 3 datasets across all RCTD modes (full, doublet, multi) on an NVIDIA RTX PRO 6000 Blackwell (96 GB VRAM) vs R spacexr with 8 CPU cores.
+Benchmarked on 3 datasets across all RCTD modes (full, doublet, multi) on an NVIDIA RTX PRO 6000 Blackwell (96 GB VRAM). CPU benchmarks use the same rctd-py code with `device="cpu"`. R spacexr baselines use 8 CPU cores (`doParallel`).
 
 <p align="center">
-  <img src="docs/benchmark.png" alt="Benchmark: runtime scalability and memory curves" width="800">
+  <img src="docs/benchmark.png" alt="Benchmark: CPU vs GPU scalability, runtime, and memory" width="900">
 </p>
 
-### Runtime (doublet mode)
+### CPU vs GPU (doublet mode)
+
+| Dataset | Cells | K | rctd-py CPU | rctd-py GPU | GPU speedup |
+|---------|-------|---|-------------|-------------|-------------|
+| Xenium Liver (small) | 13,940 | 45 | 22.7 min | 2.4 min | **10x** |
+| Xenium Mouse Brain | 36,362 | 22 | 108.4 min | 5.4 min | **20x** |
+
+> Region 3 CPU benchmark in progress — will be updated.
+
+### GPU vs R spacexr (doublet mode)
 
 | Dataset | Cells | K | R spacexr (8 CPU) | rctd-py (GPU) | Speedup |
 |---------|-------|---|-------------------|---------------|---------|
@@ -144,7 +154,7 @@ Benchmarked on 3 datasets across all RCTD modes (full, doublet, multi) on an NVI
 
 Peak VRAM is ~2.6 GB across all tested datasets (doublet mode, default batch size). RSS is dominated by the reference matrix and scales with K. Use the `batch_size` parameter to control peak VRAM — smaller batches trade throughput for lower memory.
 
-> **Note:** Speedup depends strongly on K (number of cell types). Smaller panels (K < 25) see 10–15x speedups because GPU-accelerated eigendecomposition handles all pairwise fits. Larger panels (K > 40) see 6–8x speedups, limited by CPU eigendecomposition for the K-dimensional full-mode fit.
+> **Note:** Speedup depends strongly on K (number of cell types). Smaller panels (K < 25) see the largest GPU speedups (15–20x over CPU, 10–15x over R) because GPU-accelerated eigendecomposition handles all pairwise fits efficiently. Larger panels (K > 40) see 6–10x speedups, limited by CPU eigendecomposition for the K-dimensional full-mode fit.
 
 ## Validation
 
