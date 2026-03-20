@@ -1,4 +1,5 @@
 <p align="center">
+  <img src="docs/logo_max.png" alt="rctd-py logo" width="600">
   <h1 align="center">rctd-py</h1>
   <p align="center">
     <strong>Spatial transcriptomics deconvolution — 4–41x faster than R spacexr with GPU</strong>
