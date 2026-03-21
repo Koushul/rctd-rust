@@ -271,16 +271,29 @@ def _psd_2x2(H: torch.Tensor, epsilon: float = 1e-3) -> tuple[torch.Tensor, torc
 def _psd_batch(H: torch.Tensor, epsilon: float = 1e-3) -> tuple[torch.Tensor, torch.Tensor]:
     """Batched PSD projection. H: (N, K, K) → (H_psd (N, K, K), max_eig (N,)).
 
+    For K=1, trivial scalar clamp (avoids cuSOLVER entirely).
     For K=2, uses analytical closed-form (no cuSOLVER overhead).
     For K<=16, runs eigh directly on GPU — avoids costly CPU↔GPU transfer
     that otherwise dominates runtime. For larger K (e.g. K=45), CPU
     OpenBLAS is faster than cuSOLVER's batched syevj.
     """
     K = H.shape[-1]
+    if K == 1:
+        # 1×1: eigenvalue = the single element; no decomposition needed
+        H_psd = torch.clamp(H, min=epsilon)
+        max_eig = H_psd[:, 0, 0]
+        return H_psd, max_eig
     if K == 2:
         return _psd_2x2(H, epsilon)
     if H.device.type == "cuda" and K <= 16:
         # Small matrices: GPU eigh avoids CPU↔GPU transfer overhead
+        # Guard: cuSOLVER crashes on NaN input instead of propagating it.
+        # Replace NaN with epsilon*I to produce a valid (if meaningless) PSD matrix;
+        # the IRWLS outer loop handles the resulting near-zero delta_w gracefully.
+        nan_mask = torch.isnan(H).any(dim=-1).any(dim=-1)  # (N,)
+        if nan_mask.any():
+            H = H.clone()
+            H[nan_mask] = epsilon * torch.eye(K, dtype=H.dtype, device=H.device)
         eigenvalues, eigenvectors = torch.linalg.eigh(H)
         eigenvalues = torch.clamp(eigenvalues, min=epsilon)
         # Fused reconstruction: V * sqrt(λ) → (V*sqrt(λ)) @ (V*sqrt(λ))^T
