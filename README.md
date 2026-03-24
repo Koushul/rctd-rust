@@ -265,6 +265,66 @@ The tiny default gap (0.27%) traces entirely to platform-effect estimation (`fit
 result = run_rctd(spatial, reference, mode="doublet", sigma_override=63)
 ```
 
+## Migrating from R spacexr
+
+<details>
+<summary><strong>Parameter correspondence table</strong></summary>
+
+All defaults match R spacexr, so default R results reproduce with default rctd-py parameters.
+
+### Reference construction
+
+| R spacexr (`Reference()`) | rctd-py (`Reference()`) | Default | Description |
+|---------------------------|-------------------------|---------|-------------|
+| `cell_type_col` (in meta.data) | `cell_type_col` | `"cell_type"` | Column name for cell type labels |
+| `CELL_MIN_INSTANCE` | `cell_min` | `25` | Min cells per type to include |
+| `n_max_cells` | `n_max_cells` | `10000` | Max cells per type (downsampled) |
+| `min_UMI` | `min_UMI` | `100` | Min UMI for reference cells |
+
+### RCTD configuration
+
+| R spacexr (`create.RCTD()`) | rctd-py (`RCTDConfig()`) | Default | Description |
+|-----------------------------|--------------------------|---------|-------------|
+| `gene_cutoff` | `gene_cutoff` | `0.000125` | Min normalized expression (bulk gene list) |
+| `fc_cutoff` | `fc_cutoff` | `0.5` | Min log-FC (bulk gene list) |
+| `gene_cutoff_reg` | `gene_cutoff_reg` | `0.0002` | Min normalized expression (DE gene list) |
+| `fc_cutoff_reg` | `fc_cutoff_reg` | `0.75` | Min log-FC (DE gene list) |
+| `UMI_min` | `UMI_min` | `100` | Min UMI per spatial pixel |
+| `UMI_max` | `UMI_max` | `20000000` | Max UMI per spatial pixel |
+| `counts_MIN` | `counts_MIN` | `10` | Min total counts for a gene |
+| `UMI_min_sigma` | `UMI_min_sigma` | `300` | Min UMI for sigma estimation pixels |
+| `N_epoch` | `N_epoch` | `8` | Epochs for platform effect estimation |
+| `N_fit` | `N_fit` | `100` | Pixels sampled for sigma fitting |
+| `MIN_CHANGE_BULK` | `MIN_CHANGE_BULK` | `0.0001` | Convergence threshold (bulk fitting) |
+| `MIN_CHANGE_REG` | `MIN_CHANGE_REG` | `0.001` | Convergence threshold (per-pixel) |
+| `MIN_OBS` | `MIN_OBS` | `3` | Min observations for DE gene selection |
+| `MAX_MULTI_TYPES` | `MAX_MULTI_TYPES` | `4` | Max cell types per pixel (multi mode) |
+| `CONFIDENCE_THRESHOLD` | `CONFIDENCE_THRESHOLD` | `5.0` | Singlet confidence threshold |
+| `DOUBLET_THRESHOLD` | `DOUBLET_THRESHOLD` | `20.0` | Doublet certainty threshold |
+| `max_cores` | N/A | — | See parallelism note below |
+
+### rctd-py only (no R equivalent)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_iter` | `50` | Max IRWLS iterations per pixel |
+| `step_size` | `0.3` | IRWLS step size |
+| `K_val` | `1000` | Spline discretization points |
+| `dtype` | `"float64"` | `"float32"` saves GPU memory |
+| `device` | `"auto"` | `"cpu"`, `"cuda"`, or `"auto"` |
+
+### Parallelism
+
+R spacexr uses `max_cores` to parallelize across pixels via `doParallel`. rctd-py uses **vectorized PyTorch tensor operations** instead — no `max_cores` parameter needed. For CPU thread control, set the `OMP_NUM_THREADS` environment variable before running:
+
+```bash
+export OMP_NUM_THREADS=8
+```
+
+For GPU acceleration, set `device="cuda"` in `RCTDConfig()` or pass `--device cuda` on the CLI.
+
+</details>
+
 ## API
 
 <details>
