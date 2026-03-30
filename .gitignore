@@ -86,3 +86,10 @@ secrets/
 src/rctd/_version.py
 docs/plans/
 !docs/plans/100-percent-matching-roadmap.md
+
+
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+

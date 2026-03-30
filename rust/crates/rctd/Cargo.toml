@@ -1,0 +1,42 @@
+[package]
+name = "rctd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "RCTD CLI — spatial deconvolution (Rust + Burn)"
+
+[[bin]]
+name = "rctd"
+path = "src/main.rs"
+
+# Same CLI as `rctd`, with wgpu + `--compute-device wgpu` (Metal on macOS). Build:
+#   cargo build --release -p rctd --features wgpu --bin rctd-wgpu
+[[bin]]
+name = "rctd-wgpu"
+path = "src/main.rs"
+required-features = ["wgpu"]
+
+[dependencies]
+rctd-core = { path = "../rctd-core" }
+burn-ndarray = "0.17.1"
+clap = { version = "4", features = ["derive"] }
+indicatif = "0.17"
+md5 = "0.7"
+ndarray = "0.16"
+ndarray-npy = { version = "0.9", features = ["npz"] }
+anndata = "0.6"
+anndata-hdf5 = "0.5.2"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+polars = { version = "0.51", default-features = false, features = ["dtype-full", "strings"] }
+nalgebra-sparse = "0.11"
+rand = "0.8"
+
+[features]
+default = []
+cuda = ["rctd-core/cuda"]
+wgpu = ["rctd-core/wgpu"]

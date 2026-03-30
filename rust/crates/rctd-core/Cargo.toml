@@ -1,0 +1,37 @@
+[package]
+name = "rctd-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "RCTD deconvolution core (Burn tensors, f64)"
+
+[features]
+default = []
+cuda = ["dep:burn-cuda"]
+wgpu = ["dep:burn-wgpu"]
+
+[dependencies]
+burn = { version = "0.17.1", default-features = false, features = ["std", "ndarray"] }
+burn-ndarray = "0.17.1"
+burn-cuda = { version = "0.17.1", optional = true }
+burn-wgpu = { version = "0.17.1", optional = true, default-features = true }
+ndarray = { version = "0.16", features = ["rayon"] }
+nalgebra = { version = "0.34", features = ["std"] }
+rayon = "1.10"
+statrs = "0.18"
+thiserror = "2"
+tracing = "0.1"
+ndarray-npy = { version = "0.9", features = ["npz"] }
+itertools = "0.13"
+rand = "0.8"
+
+[dev-dependencies]
+approx = "0.5"
+criterion = { version = "0.5", features = ["html_reports"] }
+md5 = "0.7"
+serde_json = "1"
+
+[[bench]]
+name = "bench_full_mode"
+harness = false
