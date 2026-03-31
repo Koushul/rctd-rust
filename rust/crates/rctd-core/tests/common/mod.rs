@@ -34,12 +34,12 @@ pub fn synthetic_pixel_data(seed: u64) -> (Array2<f64>, Array1<f64>, Array2<f64>
         numi[i] = rng.gen_range(200..3000) as f64;
         let mut mix = vec![0f64; n_types];
         let mut s = 0f64;
-        for k in 0..n_types {
-            mix[k] = rng.gen::<f64>();
-            s += mix[k];
+        for m in &mut mix {
+            *m = rng.gen::<f64>();
+            s += *m;
         }
-        for k in 0..n_types {
-            mix[k] /= s;
+        for m in &mut mix {
+            *m /= s;
         }
         for g in 0..n_genes {
             let mu: f64 = (0..n_types).map(|k| profiles[[g, k]] * mix[k]).sum::<f64>() * numi[i];
