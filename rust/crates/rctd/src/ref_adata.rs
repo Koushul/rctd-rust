@@ -71,25 +71,19 @@ fn series_to_labels(series: &Series) -> Result<Vec<String>> {
 }
 
 /// Mean normalized expression per cell type (matches Python `Reference` profile construction).
-/// Returns matrix **K × G** (one row per cell type, same row order as `cell_type_names`).
-pub fn single_cell_reference_profiles<B: Backend>(
-    ad: &AnnData<B>,
-    cell_type_col: &str,
+/// `x` is **cells × genes**; `labels` is one cell type label per row.
+/// Returns matrix **K × G** (one row per cell type, same row order as returned names).
+pub fn single_cell_reference_profiles_from_arrays(
+    x: &Array2<f64>,
+    labels: &[String],
     cell_min: usize,
     min_umi: f64,
     n_max_cells: usize,
 ) -> Result<(Array2<f64>, Vec<String>)> {
-    let df = ad.read_obs().with_context(|| "read reference obs")?;
-    let col = df
-        .column(cell_type_col)
-        .with_context(|| format!("obs column '{cell_type_col}' not found"))?;
-    let labels = series_to_labels(col.as_materialized_series())?;
-
-    let x = x_to_dense_f64(ad)?;
     let n = x.nrows();
     let g = x.ncols();
     if labels.len() != n {
-        bail!("obs length {} != X rows {}", labels.len(), n);
+        bail!("labels length {} != matrix rows {}", labels.len(), n);
     }
 
     let mut umi: Vec<f64> = Vec::with_capacity(n);
@@ -162,6 +156,24 @@ pub fn single_cell_reference_profiles<B: Backend>(
     }
 
     Ok((profiles, unique_types))
+}
+
+/// Mean normalized expression per cell type (matches Python `Reference` profile construction).
+/// Returns matrix **K × G** (one row per cell type, same row order as `cell_type_names`).
+pub fn single_cell_reference_profiles<B: Backend>(
+    ad: &AnnData<B>,
+    cell_type_col: &str,
+    cell_min: usize,
+    min_umi: f64,
+    n_max_cells: usize,
+) -> Result<(Array2<f64>, Vec<String>)> {
+    let df = ad.read_obs().with_context(|| "read reference obs")?;
+    let col = df
+        .column(cell_type_col)
+        .with_context(|| format!("obs column '{cell_type_col}' not found"))?;
+    let labels = series_to_labels(col.as_materialized_series())?;
+    let x = x_to_dense_f64(ad)?;
+    single_cell_reference_profiles_from_arrays(&x, &labels, cell_min, min_umi, n_max_cells)
 }
 
 pub fn normalize_columns(mat: &Array2<f64>) -> Array2<f64> {
