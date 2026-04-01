@@ -35,6 +35,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 polars = { version = "0.51", default-features = false, features = ["dtype-full", "strings"] }
 nalgebra-sparse = "0.11"
 rand = "0.8"
+ureq = { version = "2", default-features = true }
+dirs-next = "2"
 tempfile = "3"
 
 [features]

@@ -4,7 +4,9 @@ mod ref_adata;
 mod ref_rds;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::fs;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 
 use anndata::{AnnData, AnnDataOp, Backend};
 use anndata_hdf5::H5;
@@ -15,6 +17,9 @@ use ndarray::{Array1, Array2};
 use rctd_core::io_npz::load_q_matrices_npz;
 use rctd_core::likelihood_tables::compute_spline_coefficients;
 use rctd_core::{run_deconvolution, sync_device, DeconvMode, PreparedData, RctdConfig};
+
+const Q_MATRICES_URL: &str =
+    "https://github.com/p-gueguen/rctd-py/releases/download/v0.1.1/q_matrices.npz";
 
 #[derive(Parser)]
 #[command(name = "rctd", about = "RCTD spatial deconvolution (Rust + Burn)")]
@@ -56,8 +61,8 @@ enum Commands {
         ref_min_umi: u32,
         #[arg(long, default_value_t = 10000)]
         ref_max_cells_per_type: usize,
-        #[arg(long, help = "q_matrices.npz (from rctd cache / release asset)")]
-        q_matrices: PathBuf,
+        #[arg(long, help = "Optional q_matrices.npz; defaults to ~/.cache/rctd/q_matrices.npz (auto-download on first use)")]
+        q_matrices: Option<PathBuf>,
         #[arg(long, default_value = "100")]
         sigma: i32,
         #[arg(long, value_enum, default_value_t = ModeArg::Full)]
@@ -138,6 +143,47 @@ fn align_genes_spatial_ref(
     }
     let profiles_gk = p.t().to_owned();
     Ok((c, profiles_gk))
+}
+
+fn resolve_q_matrices_path(arg: Option<PathBuf>) -> Result<PathBuf> {
+    if let Some(p) = arg {
+        if !p.exists() {
+            bail!("q_matrices.npz not found at {} (pass a valid path or omit --q-matrices to use the cached/downloaded file)", p.display());
+        }
+        return Ok(p);
+    }
+
+    let mut cache_path = dirs_next::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".cache")
+        .join("rctd")
+        .join("q_matrices.npz");
+
+    if cache_path.exists() {
+        return Ok(cache_path);
+    }
+
+    if let Some(parent) = cache_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    eprintln!(
+        "Downloading Q-matrices from {} to {} ...",
+        Q_MATRICES_URL,
+        cache_path.display()
+    );
+    let response = ureq::get(Q_MATRICES_URL)
+        .call()
+        .map_err(|e| anyhow::Error::new(io::Error::new(io::ErrorKind::Other, format!("{e}"))))
+        .context("download q_matrices.npz")?;
+
+    let mut reader = response.into_reader();
+    let mut file = std::fs::File::create(&cache_path)?;
+    io::copy(&mut reader, &mut file)?;
+    file.flush()?;
+    eprintln!("Saved Q-matrices to {}", cache_path.display());
+
+    Ok(cache_path)
 }
 
 fn main() -> Result<()> {
@@ -249,7 +295,8 @@ fn main() -> Result<()> {
             }
             let numi: Array1<f64> = counts.sum_axis(ndarray::Axis(1));
 
-            let (q_map, x_vals) = load_q_matrices_npz(&q_matrices)?;
+            let q_path = resolve_q_matrices_path(q_matrices)?;
+            let (q_map, x_vals) = load_q_matrices_npz(q_path.as_path())?;
             let q_prefixed = format!("Q_{sigma}");
             let q_mat = q_map
                 .get(&q_prefixed)
@@ -310,4 +357,51 @@ fn write_weights_csv(path: &PathBuf, w: &Array2<f64>) -> Result<()> {
         writeln!(f, "{s}")?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_q_matrices_path;
+    use std::env;
+    use std::fs;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    #[test]
+    fn resolve_q_path_uses_explicit_existing_path() {
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("q_matrices.npz");
+        fs::write(&file, b"dummy").unwrap();
+
+        let out = resolve_q_matrices_path(Some(file.clone())).unwrap();
+        assert_eq!(out, file);
+    }
+
+    #[test]
+    fn resolve_q_path_errors_on_missing_explicit_path() {
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("missing_q.npz");
+        let err = resolve_q_matrices_path(Some(file)).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("q_matrices.npz not found"));
+    }
+
+    #[test]
+    fn resolve_q_path_uses_cached_home_path_when_present() {
+        let tmp_home = TempDir::new().unwrap();
+        env::set_var("HOME", tmp_home.path());
+
+        let cache_path: PathBuf = tmp_home
+            .path()
+            .join(".cache")
+            .join("rctd")
+            .join("q_matrices.npz");
+        if let Some(parent) = cache_path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(&cache_path, b"dummy").unwrap();
+
+        let out = resolve_q_matrices_path(None).unwrap();
+        assert_eq!(out, cache_path);
+    }
 }
